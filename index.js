@@ -49,9 +49,20 @@ ReflectorServer.prototype.handleNotification = function(req,res) {
 
         }
     }
-    restler.post(this.targetUrl, options).on('complete', function(result,response) {
-        res.sendStatus(response.statusCode).end();
-    });
+    console.log('Forwarding incoming notification to '+this.targetUrl);
+    console.log('Notification: '+req.rawBody);
+    if(this.targetUrl != null) {
+        restler.post(this.targetUrl, options).on('complete', function(result,response) {
+            if(response==null) {
+                console.log('Error on forwarding... '+result);
+                res.sendStatus(500).end();
+            } else {
+                res.sendStatus(response.statusCode).end();
+            }
+        });
+    } else {
+        console.log('Not forwarding as no target Url set yet');
+    }
 }
 
 ReflectorServer.prototype.handleAddWebSubscription = function(req,res) {
@@ -104,7 +115,7 @@ var config = {
     isyAddress: "10.0.1.19",        // Address of the ISY we are reflecting
     isyPort: 80,                    // Port of the ISY we are reflecting
     serverPort: 3003,               // Port this server should run on
-    localAddress: "10.0.1.44"       // Local address of this machine
+    localAddress: "10.0.1.49"       // Local address of this machine
 }
 
 bridge = new ReflectorServer(config);
