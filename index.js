@@ -28,9 +28,10 @@ var ReflectorServer = function(config) {
     this.localAddress = config.localAddress == undefined ? "10.0.1.44" : config.localAddress;
     this.targetUrl = "http://10.0.1.4:39500/";
     this.isyAddress = config.isyAddress == undefined ? "10.0.1.44": config.isyAddress;
-    this.isyPort = config.isyPort == undefined ? 3000 : config.isyAddress;
+    this.isyPort = config.isyPort == undefined ? 3000 : config.isyPort;
     this.app = express();
     this.app.use(xmlparser());
+    this.messagesToSend = [];
 }
 
 ReflectorServer.prototype.log = function(msg) {ß
@@ -43,41 +44,59 @@ ReflectorServer.prototype.getIsyUrl = function(path) {
     return "http://"+this.isyAddress+":"+this.isyPort+"/"+path;
 }
 
-ReflectorServer.prototype.handleNotification = function(req,res) {
+ReflectorServer.prototype.sendNextMessage = function() {
+    if(this.messagesToSend.length == 0) {
+        console.log("No messages to send");
+        return;
+    }
     var that = this;
-    var responser = res;
-    var options = {
+    var parsedUrl = url.parse(this.targetUrl);
+    var address = parsedUrl.hostname;
+    var port = Number(parsedUrl.port);
+    var msgToSend = this.messagesToSend[0];
+    var client = new net.Socket();
+    console.log("Sending notification to: "+address+":"+port);
+    client.connect(port, address, function() {
+        try {
+            console.log('Sending...' + msgToSend);
+            client.write(msgToSend);
+            client.destroy();
+            that.messagesToSend.splice(0,1);
+        } catch(Error) {
+            console.log('Error sending...' + Error);
+            console.log('Trying again...');
+        }
+        that.sendNextMessage();
+    });
+}
+
+ReflectorServer.prototype.handleNotification = function(req,res) {
+    /*var options = {
         data: req.rawBody,
         headers: {
             'CONTENT-TYPE': 'text/xml'
 
         }
-    }
-    console.log('Forwarding incoming notification to '+this.targetUrl);
-    console.log('Notification: '+req.rawBody);
+    }*/
+    console.log('Queuing incoming notification to '+this.targetUrl);
     if(this.targetUrl != null) {
-        var parsedUrl = url.parse(this.targetUrl);
-        var address = parsedUrl.hostname; 
-        var port = Number(parsedUrl.port);
-        var client = new net.Socket();
-	client.connect(port, address, function() {
-	    console.log('Sending...to...'+address+':'+port);
-            var msg=""+
-                "POST / HTTP/1.1\r\n"+
-                "Accept: */*\r\n"+
-                "User-Agent: Restler for Node.js\r\n"+
-                "Host: "+that.targetUrl+"\r\n"+
-                "Accept-Encoding: gzip, deflate\r\n"+
-                "CONTENT-TYPE: text/xml\r\n"+
-                "Content-Length: "+req.header('Content-Length')+
-                "\r\n"+
-                "Connection: keep-alive\r\n\r\n"+
-                req.rawBody;
- 	    console.log('Sending...'+msg);
-	    client.write(msg);
-            client.destroy();
-            responser.sendStatus(200).end();
-	});
+        var msg=""+
+            "POST / HTTP/1.1\r\n"+
+            "Accept: */*\r\n"+
+            "User-Agent: Restler for Node.js\r\n"+
+            "Host: "+this.targetUrl+"\r\n"+
+            "Accept-Encoding: gzip, deflate\r\n"+
+            "CONTENT-TYPE: text/xml\r\n"+
+            "Content-Length: "+req.header('Content-Length')+
+            "\r\n"+
+            "Connection: keep-alive\r\n\r\n"+
+            req.rawBody;
+        this.messagesToSend.push(msg);
+        console.log("Queue now has: "+this.messagesToSend.length+" items");
+        if(this.messagesToSend.length == 1) {
+            this.sendNextMessage();
+        }
+        res.sendStatus(200).end();
     } else {
         console.log('Not forwarding as no target Url set yet');
     }
@@ -90,6 +109,7 @@ ReflectorServer.prototype.handleAddWebSubscription = function(req,res) {
     var requestBody = req.rawBody;
     requestBody = requestBody.replace(this.targetUrl,newNotifyUrl);
     var user = basicAuth(req)
+    var responseSource = res
 
     var options = {
         data: requestBody,
@@ -100,7 +120,7 @@ ReflectorServer.prototype.handleAddWebSubscription = function(req,res) {
         }
     }
     restler.post(this.getIsyUrl('services'), options).on('complete', function(result,response) {
-        res.sendStatus(response.statusCode).end();
+        responseSource.sendStatus(responseSource.statusCode).end();
     });
 }
 
