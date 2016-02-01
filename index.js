@@ -20,11 +20,13 @@ var express = require("express");
 var xmlparser = require('express-xml-bodyparser');
 var basicAuth = require('basic-auth');
 var restler = require('restler');
+var net = require('net');
+var url = require('url');
 
 var ReflectorServer = function(config) {
     this.serverPort = config.serverPort == undefined ? 3003 : config.serverPort;
     this.localAddress = config.localAddress == undefined ? "10.0.1.44" : config.localAddress;
-    this.targetUrl = null;
+    this.targetUrl = "http://10.0.1.4:39500/";
     this.isyAddress = config.isyAddress == undefined ? "10.0.1.44": config.isyAddress;
     this.isyPort = config.isyPort == undefined ? 3000 : config.isyAddress;
     this.app = express();
@@ -42,6 +44,8 @@ ReflectorServer.prototype.getIsyUrl = function(path) {
 }
 
 ReflectorServer.prototype.handleNotification = function(req,res) {
+    var that = this;
+    var responser = res;
     var options = {
         data: req.rawBody,
         headers: {
@@ -52,14 +56,28 @@ ReflectorServer.prototype.handleNotification = function(req,res) {
     console.log('Forwarding incoming notification to '+this.targetUrl);
     console.log('Notification: '+req.rawBody);
     if(this.targetUrl != null) {
-        restler.post(this.targetUrl, options).on('complete', function(result,response) {
-            if(response==null) {
-                console.log('Error on forwarding... '+result);
-                res.sendStatus(500).end();
-            } else {
-                res.sendStatus(response.statusCode).end();
-            }
-        });
+        var parsedUrl = url.parse(this.targetUrl);
+        var address = parsedUrl.hostname; 
+        var port = Number(parsedUrl.port);
+        var client = new net.Socket();
+	client.connect(port, address, function() {
+	    console.log('Sending...to...'+address+':'+port);
+            var msg=""+
+                "POST / HTTP/1.1\r\n"+
+                "Accept: */*\r\n"+
+                "User-Agent: Restler for Node.js\r\n"+
+                "Host: "+that.targetUrl+"\r\n"+
+                "Accept-Encoding: gzip, deflate\r\n"+
+                "CONTENT-TYPE: text/xml\r\n"+
+                "Content-Length: "+req.header('Content-Length')+
+                "\r\n"+
+                "Connection: keep-alive\r\n\r\n"+
+                req.rawBody;
+ 	    console.log('Sending...'+msg);
+	    client.write(msg);
+            client.destroy();
+            responser.sendStatus(200).end();
+	});
     } else {
         console.log('Not forwarding as no target Url set yet');
     }
