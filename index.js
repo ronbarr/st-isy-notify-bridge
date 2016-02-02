@@ -55,10 +55,12 @@ ReflectorServer.prototype.sendNextMessage = function() {
     var port = Number(parsedUrl.port);
     var msgToSend = this.messagesToSend[0];
     var client = new net.Socket();
-    console.log("Sending notification to: "+address+":"+port);
+//    console.log("Sending notification to: "+address+":"+port);
     client.connect(port, address, function() {
         try {
-            console.log('Sending...' + msgToSend);
+            if(msgToSend.indexOf("<control>ST</control>")!= -1) {
+                console.log('Sending...' + msgToSend);
+            }
             client.write(msgToSend);
             client.destroy();
             that.messagesToSend.splice(0,1);
@@ -78,7 +80,7 @@ ReflectorServer.prototype.handleNotification = function(req,res) {
 
         }
     }*/
-    console.log('Queuing incoming notification to '+this.targetUrl);
+    console.log('Queuing incoming notification to '+this.targetUrl+' queue now has '+this.messagesToSend.length+' items in it now');
     if(this.targetUrl != null) {
         var msg=""+
             "POST / HTTP/1.1\r\n"+
@@ -92,7 +94,7 @@ ReflectorServer.prototype.handleNotification = function(req,res) {
             "Connection: keep-alive\r\n\r\n"+
             req.rawBody;
         this.messagesToSend.push(msg);
-        console.log("Queue now has: "+this.messagesToSend.length+" items");
+//        console.log("Queue now has: "+this.messagesToSend.length+" items");
         if(this.messagesToSend.length == 1) {
             this.sendNextMessage();
         }
@@ -119,7 +121,9 @@ ReflectorServer.prototype.handleAddWebSubscription = function(req,res) {
             'CONTENT-TYPE': 'text/xml'
         }
     }
+    console.log('Sending subscribe to: '+this.getIsyUrl('services'));
     restler.post(this.getIsyUrl('services'), options).on('complete', function(result,response) {
+        console.log('Got response from services...'+result);
         responseSource.sendStatus(responseSource.statusCode).end();
     });
 }
